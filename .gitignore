@@ -2,7 +2,7 @@
 downloader.py
 lesson.py
 scraper.py
-
+.gitignore
 teext.py
 test.html
 tz.txt
