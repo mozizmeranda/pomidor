@@ -1,4 +1,5 @@
 from selenium import webdriver
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -19,9 +20,9 @@ options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) Apple
 
 
 #
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver = uc.Chrome(options=options)
 #
-url = "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=UZ&is_targeted_country=false&media_type=all&search_type=page&view_all_page_id=112462574687512"  # <-- вставь ссылку на нужную страницу
+url = "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=UZ&is_targeted_country=false&media_type=all&search_type=page&view_all_page_id=112462574687512"  # <-- вставь ссылку на нужную страницу
 driver.get(url)
 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 time.sleep(15)
