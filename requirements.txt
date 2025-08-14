@@ -3,3 +3,4 @@ selenium~=4.34.2
 environs~=14.1.1
 aiogram~=3.20.0
 apscheduler
+pytz

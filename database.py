@@ -93,14 +93,14 @@ class Database:
         cpm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         self.execute(sql, parameters=params, commit=True)
 
-    def get_metrics(self):
-        sql = """SELECT * FROM ad_metrics ORDER BY adset_id ASC"""
-        data = self.execute(sql, fetchall=True)
+    def get_metrics(self, campaign_id):
+        sql = """SELECT * FROM ad_metrics WHERE campaign_id=? ORDER BY adset_id ASC"""
+        data = self.execute(sql, (campaign_id,), fetchall=True)
         return data
 
-    def get_status(self, adset_id):
-        sql = "SELECT * FROM status WHERE adset_id=?"
-        return self.execute(sql, parameters=(adset_id,), fetchone=True)
+    def get_campaigns(self):
+        sql = "SELECT campaign_id, campaign_name FROM status"
+        return self.execute(sql, fetchall=True)
 
 
 db = Database()

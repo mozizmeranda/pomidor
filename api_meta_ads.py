@@ -140,7 +140,7 @@ def get_metrics_from_meta(date_since):
         f"spend,impressions,clicks,ctr,cpm,actions"
         f"&access_token={access_token}&"
         f"time_range[since]=2025-08-01&time_range[until]=2025-08-14&time_increment=1"
-        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"120215614681840753\"}}]&"
+        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"120222881867660753\"}}]&"
     )
     # print(date_since, timestamp)
 
@@ -228,8 +228,8 @@ def get_adset_name_by_id(adset_id):
 # print(get_adset_name_by_id("120215616952620753"))
 
 
-def get_metrics_from_db():
-    metrics = db.get_metrics()
+def get_metrics_from_db(campaign_id):
+    metrics = db.get_metrics(campaign_id)
 
     # grouped[adset_id] = {"name": adset_name, "rows": [..]}
     grouped = defaultdict(lambda: {"name": "", "rows": []})
@@ -339,7 +339,7 @@ def save_as_mobile_html(report_text, adset_id):
     return filename
 
 
-def get_metrics_for_today(date):
+def get_metrics_for_day(date):
     url = "https://graph.facebook.com/v23.0/act_1011840574303712/insights"
     params = {
         "level": "adset",
@@ -354,4 +354,19 @@ def get_metrics_for_today(date):
     print(resp.json())
 
 
+def get_status_from_meta():
+    url = "https://graph.facebook.com/v23.0/act_1011840574303712/adsets"
+    params = {
+        "fields": "id,name,campaign_id,status,campaign{id,name}",
+        "access_token": access_token,
+        "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE"]}]'
+    }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+    for row in data['data']:
+        db.insert_into_status_table((row['campaign']['id'], row['campaign']['name'], row['id'],
+                                     row['name'], row['status']))
+
 # get_metrics_for_today("2025-08-05")
+# get_status_from_meta()
+
