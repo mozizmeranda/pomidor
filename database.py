@@ -67,6 +67,11 @@ class Database:
         parameters = (role, name, content)
         self.execute(sql, parameters=parameters, commit=True)
 
+    def insert_into_status_table(self, params):
+        sql = ("INSERT OR IGNORE INTO status(campaign_id, campaign_name, adset_id, adset_name, status) "
+               "VALUES (?, ?, ?, ?, ?)")
+        self.execute(sql, parameters=params, commit=True)
+
     def get_chat(self):
         sql = "SELECT * FROM Chat ORDER BY id ASC"
         data = self.execute(sql, fetchall=True)
@@ -92,6 +97,10 @@ class Database:
         sql = """SELECT * FROM ad_metrics ORDER BY adset_id ASC"""
         data = self.execute(sql, fetchall=True)
         return data
+
+    def get_status(self, adset_id):
+        sql = "SELECT * FROM status WHERE adset_id=?"
+        return self.execute(sql, parameters=(adset_id,), fetchone=True)
 
 
 db = Database()

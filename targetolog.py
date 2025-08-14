@@ -1,9 +1,11 @@
 from aiogram import types, Dispatcher, Bot
 import asyncio
+from aiogram.types import FSInputFile
 from config import bot_token
 from aiogram.filters import Command
 from api_meta_ads import get_metrics_from_db
 from llm import gpt_v2
+from api_meta_ads import save_as_mobile_html
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 
@@ -64,7 +66,15 @@ async def gpt_request(message: types.Message):
 async def get_creatives(message: types.Message):
     if message.text.startswith("/analyze "):
         extracted_text = message.text[9:]
-        full_text = f"{extracted_text}\n\n{get_metrics_from_db()}"
+        metrics = get_metrics_from_db()
+        full_text = f"{extracted_text}\n\n{metrics}"
+        filename = save_as_mobile_html(metrics, 123)
+        doc = FSInputFile(filename, "adset_report_123_mobile.html")
+        await bot.send_document(
+            chat_id=message.from_user.id,
+            document=doc,
+            caption=f"📊 Отчет"
+        )
         r = gpt_v2(full_text)
         print(r)
         paragraphs = r.split("---")

@@ -1,9 +1,10 @@
+import markdown
 from environs import Env
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
 import requests
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import db
 
 env = Env()
@@ -116,36 +117,51 @@ def get_interests(adset_id):
 
 # print(get_interests(120215617003820753))
 
+def get_status(adset_id):
+    url = "https://graph.facebook.com/v23.0/act_1011840574303712/adsets"
+    params = {
+        "fields": "id,name,status",
+        "access_token": access_token,
+        "filtering": f'[{{"field":"adset.id","operator":"EQUAL","value":"{adset_id}"}}]'
+    }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+    return data['data'][0]['status']
 
-def get_metrics_from_meta(campaign_id: int, date_since):
-    timestamp = datetime.now().strftime("%Y-%m-%d")
+
+def get_metrics_from_meta(date_since):
+    timestamp = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    print(timestamp)
     interests = ""
     url = (
         f"https://graph.facebook.com/v23.0/act_1011840574303712/insights"
         f"?level=adset"
         f"&fields=campaign_id,adset_id,campaign_name,adset_name,date_start,date_stop,"
         f"spend,impressions,clicks,ctr,cpm,actions"
-        f"&access_token={access_token}"
-        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"{campaign_id}\"}}]&"
-        f"time_range[since]={date_since}&time_range[until]={timestamp}&time_increment=1&breakdowns="
+        f"&access_token={access_token}&"
+        f"time_range[since]=2025-08-01&time_range[until]=2025-08-14&time_increment=1"
+        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"120215614681840753\"}}]&"
     )
     # print(date_since, timestamp)
 
     response = requests.get(url)
     data = response.json()
-    # print(data)
+    print(data)
     for row in data["data"]:
         spend = float(row.get("spend", 0))
         impressions = int(row.get("impressions", 0))
         clicks = int(row.get("clicks", 0))
 
         leads = 0
-        for action in row.get("actions", []):
-            if action["action_type"] in ["lead", "onsite_conversion.lead_grouped"]:
-                leads += int(action.get("value", 0))
+        actions = row.get('actions', [])
+        for action in actions:
+            if action.get("action_type") == 'lead':
+                leads = action.get('value', 0)
+            # if action["action_type"] in ["lead", "onsite_conversion.lead_grouped"]:
+            #     leads += int(action.get("value", 0))
 
-        cr = round(leads / clicks, 4) if clicks > 0 else 0
-        cpl = round(spend / leads, 4) if leads > 0 else 0
+        cr = round(int(leads) / clicks, 4) if clicks > 0 else 0
+        cpl = round(spend / int(leads), 4) if int(leads) > 0 else 0
         ctr = round(clicks / impressions * 100, 4) if impressions > 0 else 0
         cpm = round(spend / impressions * 1000, 4) if impressions > 0 else 0
 
@@ -168,7 +184,8 @@ def get_metrics_from_meta(campaign_id: int, date_since):
         db.insert_ad_metrics(params=params)
 
 
-# print((get_metrics(120215614681840753, "2025-08-01")))
+print((get_metrics_from_meta("2025-08-01")))
+# print((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))
 
 
 def set_adset_status(adset_id, status):
@@ -202,7 +219,7 @@ def get_adset_name_by_id(adset_id):
     url = f"https://graph.facebook.com/v23.0/{adset_id}"
     params = {
         "fields": "name,daily_budget",
-        "access_token": access_token
+        "access_token": access_token,
     }
     resp = requests.get(url, params=params).json()
     return resp
@@ -224,17 +241,117 @@ def get_metrics_from_db():
 
     full_text = ""
     for adset_id, data in grouped.items():
-        body = get_interests(int(adset_id))
-        full_text += (f"### Adset ID: {adset_id} — {data['name']}.\n Интересы: {body['interests']}. "
-                      f"Daily_budget: {body['daily_budget']} центов.\n\n")
-        full_text += "| Date | Потрачено, $ | Impressions | Clicks | Leads | CR | CPL | CTR | CPM |\n"
-        full_text += "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+        if get_status(adset_id) == "ACTIVE":
+            body = get_interests(int(adset_id))
+            full_text += (f"### Adset ID: {adset_id} — {data['name']}.\n Интересы: {body['interests']}. \n"
+                          f"Daily_budget: {body['daily_budget']} центов.\n\n")
+            full_text += "| Date | Потрачено, $ | Impressions | Clicks | Leads | CR | CPL | CTR | CPM |\n"
+            full_text += "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
 
         # r: (id, adset_id, adset_name, campaign_id, timestamp, spend, impressions, clicks, leads, cr, cpl, ctr, cpm)
-        for r in data["rows"]:
-            full_text += (
-                f"| {r[4]} | {r[5]} | {r[6]} | {r[7]} | {r[8]} | {r[9]} | {r[10]} | {r[11]} | {r[12]} |\n"
-            )
-        full_text += "\n\n"
+            for r in data["rows"]:
+                full_text += (
+                    f"| {r[4]} | {r[5]} | {r[6]} | {r[7]} | {r[8]} | {r[9]} | {r[10]} | {r[11]} | {r[12]} |\n"
+                )
+            full_text += "\n\n"
 
     return full_text
+
+
+def save_as_mobile_html(report_text, adset_id):
+    html = markdown.markdown(report_text, extensions=['tables'])
+    filename = f"adset_report_{adset_id}_mobile.html"
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Adset Report {adset_id}</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+                    margin: 10px;
+                    font-size: 14px;
+                    line-height: 1.4;
+                }}
+
+                h3 {{
+                    color: #333;
+                    font-size: 16px;
+                    margin-bottom: 10px;
+                    word-wrap: break-word;
+                }}
+
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 12px;
+                    overflow-x: auto;
+                    display: block;
+                    white-space: nowrap;
+                }}
+
+                th, td {{
+                    border: 1px solid #ddd;
+                    padding: 4px 6px;
+                    text-align: left;
+                }}
+
+                th {{
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                    position: sticky;
+                    top: 0;
+                }}
+
+                /* Мобильная версия таблицы */
+                @media (max-width: 768px) {{
+                    table {{
+                        font-size: 10px;
+                    }}
+
+                    th, td {{
+                        padding: 2px 4px;
+                    }}
+
+                    body {{
+                        margin: 5px;
+                    }}
+                }}
+
+                /* Горизонтальная прокрутка для таблицы */
+                .table-container {{
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="table-container">
+                {html}
+            </div>
+        </body>
+        </html>
+        """)
+    return filename
+
+
+def get_metrics_for_today(date):
+    url = "https://graph.facebook.com/v23.0/act_1011840574303712/insights"
+    params = {
+        "level": "adset",
+        "fields": "campaign_id,adset_id,campaign_name,adset_name,date_start,date_stop,"
+                  "spend,impressions,clicks,ctr,cpm,actions",
+        "access_token": access_token,
+        "time_range[since]": date,
+        "time_range[until]": date,
+        "time_increment": 1
+    }
+    resp = requests.get(url, params=params)
+    print(resp.json())
+
+
+# get_metrics_for_today("2025-08-05")
