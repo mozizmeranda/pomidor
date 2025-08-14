@@ -184,7 +184,7 @@ def get_metrics_from_meta(date_since):
         db.insert_ad_metrics(params=params)
 
 
-print((get_metrics_from_meta("2025-08-01")))
+# print((get_metrics_from_meta("2025-08-01")))
 # print((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))
 
 
