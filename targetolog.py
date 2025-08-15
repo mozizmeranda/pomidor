@@ -108,7 +108,7 @@ async def get_creatives(message: types.Message):
     r = gpt_v2(full_text)
     paragraphs = r.split("---")
     for i in paragraphs:
-        await message.answer(text=i.replace("#", ""), parse_mode="MarkdownV2")
+        await message.answer(text=format_for_telegram(i))
 
 
 @dp.message(Command("text"))
