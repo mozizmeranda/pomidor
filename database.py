@@ -102,6 +102,10 @@ class Database:
         sql = "SELECT campaign_id, campaign_name FROM status"
         return self.execute(sql, fetchall=True)
 
+    def check_existence(self, adset_id, date):
+        sql = "SELECT * FROM ad_metrics WHERE adset_id=? AND timestamp=?"
+        return self.execute(sql, parameters=(adset_id, date,), fetchall=True)
+
 
 db = Database()
 # db.create_table_status()

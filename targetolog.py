@@ -3,52 +3,18 @@ import asyncio
 from aiogram.types import FSInputFile, BotCommand
 from config import bot_token
 from aiogram.filters import Command
-from api_meta_ads import get_metrics_from_db
-from apscheduler.triggers.cron import CronTrigger
 import re
 from llm import gpt_v2
-from api_meta_ads import save_as_mobile_html
-from apscheduler.schedulers.background import BackgroundScheduler
+from api_meta_ads import (save_as_mobile_html, get_active_campaigns,
+                          get_metrics_for_day, get_metrics_from_db, get_campaign_name)
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import requests
 from database import *
 
 
 bot = Bot(token=bot_token)
 dp = Dispatcher()
-scheduler = BackgroundScheduler()
-
-# @dp.message(Command("parse"))
-# async def parse(message: types.Message):
-#     msg = await message.reply("Пожалуйста подождите!")
-#     res = get_texts()
-#     for i in res:
-#         await message.reply(f"{i}")
-#     await bot.delete_message(chat_id=message.chat.id, message_id=msg.message_id)
-#     r = call_gpt(res)
-#     with open("tz.txt", "w", encoding="utf-8") as f:
-#         f.write(r['content'])
-#
-#     document = FSInputFile("tz.txt")
-#     await message.answer_document(document=document, caption="Ответ от gpt :)")
-#     # await message.answer(text=r['content'])
-
-requests.get(f"https://api.telegram.org/bot7080784217:AAGHD7Ne0qp7IWC8b4xQu7yhfxdAKxw2uus/sendMessage?"
-             f"chat_id=6287458105&text=1")
-
-
-@dp.message(Command("start"))
-async def start(message: types.Message):
-    await message.reply("Привет, я AI таргетолог.")
-
-
-async def set_commands():
-    commands = [
-        BotCommand(command="start", description="Запуск бота"),
-        BotCommand(command="campaigns", description="Чтобы получить все доступные кампании."),
-        BotCommand(command="gpt", description="Запрос к GPT"),
-        BotCommand(command="analyze", description="Анализ кампании"),
-    ]
-    await bot.set_my_commands(commands)
+scheduler = AsyncIOScheduler()
 
 
 def format_for_telegram(text):
@@ -67,6 +33,58 @@ def format_for_telegram(text):
     # text = re.sub(r'\n\n', '\n━━━━━━━━━━━━━━━\n', text)
 
     return text
+
+
+prompt_for_auto_check = """Это автоматическое сообщение. Без моего одобрения ничего не предпринимать!
+Твоя задача проанализировать метрики, в метриках я также добавил новые свежие метрики. 
+
+Сделай анализ и верни свой фидбек, свои рекомендации. 
+Пока не вызывай никаких функций, просто верни свои рекомендации по изменениям.
+Только после моего одобрение можно будет вызвать функция по перераспределению бюджета или по отключению неэффективных групп объявлений.
+Ниже я напишу метрики свои."""
+
+
+async def scheduled_analysis():
+    chat_id = -1002162136800
+    active_campaigns = get_active_campaigns()  # list()
+    get_metrics_for_day()  # получаю свежие метрики за 3 дня назад и вношу их в db
+    request_text = ""
+    for campaign in active_campaigns:
+        request_text += f"### Campaign name = {campaign['name']}\n Campaign ID = {campaign['id']}\n\n"
+        request_text += get_metrics_from_db(campaign['id'])
+        request_text += "\n\n---\n\n\n"
+    print(request_text)
+    full_text = prompt_for_auto_check + "\n\n" + request_text
+    filename = save_as_mobile_html(full_text, 123)
+    doc = FSInputFile(filename, "adset_report_123_mobile.html")
+    await bot.send_document(
+        chat_id=chat_id,
+        document=doc,
+        caption=f"📊 Отчет"
+    )
+    r = gpt_v2(full_text)
+    paragraphs = r.split("---")
+    for i in paragraphs:
+        await bot.send_message(chat_id=chat_id, text=format_for_telegram(i))
+
+
+requests.get(f"https://api.telegram.org/bot{bot_token}/sendMessage?"
+             f"chat_id=6287458105&text=123")
+
+
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    await message.reply("Привет, я AI таргетолог.")
+
+
+async def set_commands():
+    commands = [
+        BotCommand(command="start", description="Запуск бота"),
+        BotCommand(command="campaigns", description="Чтобы получить все доступные кампании."),
+        BotCommand(command="gpt", description="Запрос к GPT"),
+        BotCommand(command="analyze", description="Анализ кампании"),
+    ]
+    await bot.set_my_commands(commands)
 
 
 @dp.message(Command("gpt"))
@@ -137,13 +155,10 @@ async def send_campaigns(message: types.Message):
 
 
 async def main():
+    scheduler.add_job(scheduled_analysis, 'cron', hour=15, minute=14)
+    scheduler.start()
     await set_commands()
     await dp.start_polling(bot)
-    # start_scheduler()
-
-    # start_scheduler()
-    # scheduler.add_job(async_send, "interval", seconds=5)
-    # scheduler.start()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import json
 import markdown
 from environs import Env
 from facebook_business.api import FacebookAdsApi
@@ -17,13 +18,13 @@ ad_account_id = 'act_1011840574303712'  # Sherzod Djalilov
 # audience_id = 120230787401000283
 facebook_id = 735875899606197
 instagram_id = 17841442948535136
-
-campaign_id_v1 = 120230933381480283
-campaign_id_v2 = 120230950013850283
-
-isso_id = 1011840574303712
-
-adset_id = 120230950033290283
+#
+# campaign_id_v1 = 120230933381480283
+# campaign_id_v2 = 120230950013850283
+#
+# isso_id = 1011840574303712
+#
+# adset_id = 120230950033290283
 
 FacebookAdsApi.init(app_id, app_secret, access_token)
 
@@ -119,20 +120,21 @@ def get_interests(adset_id):
 
 def get_status(adset_id):
     url = "https://graph.facebook.com/v23.0/act_1011840574303712/adsets"
+    filtering = [{"field": "adset.id", "operator": "EQUAL", "value": str(adset_id)}]
     params = {
         "fields": "id,name,status",
         "access_token": access_token,
-        "filtering": f'[{{"field":"adset.id","operator":"EQUAL","value":"{adset_id}"}}]'
+        "filtering": json.dumps(filtering)
     }
     resp = requests.get(url, params=params)
     data = resp.json()
+
     return data['data'][0]['status']
 
 
 def get_metrics_from_meta(date_since):
     timestamp = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    print(timestamp)
-    interests = ""
+
     url = (
         f"https://graph.facebook.com/v23.0/act_1011840574303712/insights"
         f"?level=adset"
@@ -146,7 +148,7 @@ def get_metrics_from_meta(date_since):
 
     response = requests.get(url)
     data = response.json()
-    print(data)
+
     for row in data["data"]:
         spend = float(row.get("spend", 0))
         impressions = int(row.get("impressions", 0))
@@ -226,6 +228,16 @@ def get_adset_name_by_id(adset_id):
 
 
 # print(get_adset_name_by_id("120215616952620753"))
+
+def get_campaign_name(campaign_id):
+    url = f"https://graph.facebook.com/v23.0/{campaign_id}"
+    params = params = {
+        "fields": "id,name",
+        "access_token": access_token,
+    }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+    return data['name']
 
 
 def get_metrics_from_db(campaign_id):
@@ -339,19 +351,79 @@ def save_as_mobile_html(report_text, adset_id):
     return filename
 
 
-def get_metrics_for_day(date):
+def get_campaign_status(campaign_id):
+    url = "https://graph.facebook.com/v23.0/act_1011840574303712/campaigns"
+    params = {
+        "fields": "id,name,status",
+        "access_token": access_token,
+        "filtering": f'["field": "campaign.id", "operator": "EQUAL", "value": {campaign_id}]'
+    }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+    return data['data'][0]['status']
+
+
+def get_metrics_for_day():
+    additions = []
     url = "https://graph.facebook.com/v23.0/act_1011840574303712/insights"
+
+    timestamp = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+
     params = {
         "level": "adset",
         "fields": "campaign_id,adset_id,campaign_name,adset_name,date_start,date_stop,"
                   "spend,impressions,clicks,ctr,cpm,actions",
         "access_token": access_token,
-        "time_range[since]": date,
-        "time_range[until]": date,
-        "time_increment": 1
+        "time_range[since]": timestamp,
+        "time_range[until]": timestamp,
+        "time_increment": 1,
+        # "filtering": f'[{{"field": "campaign.id", "operator": "EQUAL", "value": {campaign_id}}}]'
     }
     resp = requests.get(url, params=params)
-    print(resp.json())
+    data = resp.json()
+
+    for row in data["data"]:
+        if get_status(int(row["adset_id"])) == "ACTIVE":
+            print(row["adset_id"])
+            spend = float(row.get("spend", 0))
+            impressions = int(row.get("impressions", 0))
+            clicks = int(row.get("clicks", 0))
+
+            leads = 0
+            actions = row.get('actions', [])
+            for action in actions:
+                if action.get("action_type") == 'lead':
+                    leads = action.get('value', 0)
+                # if action["action_type"] in ["lead", "onsite_conversion.lead_grouped"]:
+                #     leads += int(action.get("value", 0))
+
+            cr = round(int(leads) / clicks, 4) if clicks > 0 else 0
+            cpl = round(spend / int(leads), 4) if int(leads) > 0 else 0
+            ctr = round(clicks / impressions * 100, 4) if impressions > 0 else 0
+            cpm = round(spend / impressions * 1000, 4) if impressions > 0 else 0
+
+            timestamp = row['date_stop']
+            params = (
+                row["adset_id"],
+                row['adset_name'],
+                row["campaign_id"],
+                timestamp,
+                spend,
+                impressions,
+                clicks,
+                leads,
+                cr,
+                cpl,
+                ctr,
+                cpm
+            )
+            db.insert_ad_metrics(params=params)
+            additions.append({"adset_id": row['adset_id'], "adset_name": row['adset_name']})
+
+    return additions
+
+# get_metrics_for_day("2025-08-15")
+# print(get_status(120215616952620753))
 
 
 def get_status_from_meta():
@@ -370,3 +442,19 @@ def get_status_from_meta():
 # get_metrics_for_today("2025-08-05")
 # get_status_from_meta()
 
+
+def get_active_campaigns():
+    active_campaigns = []
+    url = "https://graph.facebook.com/v23.0/act_1011840574303712/campaigns"
+    params = {
+        "fields": "id,name,status",
+        "access_token": access_token,
+        "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE"]}]'
+    }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+
+    for campaign in data['data']:
+        active_campaigns.append({"id": campaign['id'], "name": campaign['name']})
+
+    return active_campaigns
