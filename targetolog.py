@@ -1,7 +1,7 @@
 from aiogram import types, Dispatcher, Bot
 import asyncio
 from aiogram.types import FSInputFile, BotCommand
-from config import bot_token
+from config import bot_token, hour, minute
 from aiogram.filters import Command
 import re
 from llm import gpt_v2
@@ -155,7 +155,8 @@ async def send_campaigns(message: types.Message):
 
 
 async def main():
-    scheduler.add_job(scheduled_analysis, 'cron', hour=15, minute=14)
+    scheduler.add_job(scheduled_analysis, 'cron', hour=hour, minute=minute)
+
     scheduler.start()
     await set_commands()
     await dp.start_polling(bot)
