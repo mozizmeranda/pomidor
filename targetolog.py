@@ -72,7 +72,7 @@ async def scheduled_analysis():
 requests.get(f"https://api.telegram.org/bot{bot_token}/sendMessage?"
              f"chat_id=6287458105&text=123")
 
-asyncio.run(scheduled_analysis())
+# asyncio.run(scheduled_analysis())
 
 
 @dp.message(Command("start"))
