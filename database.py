@@ -106,8 +106,13 @@ class Database:
         sql = "SELECT * FROM ad_metrics WHERE adset_id=? AND timestamp=?"
         return self.execute(sql, parameters=(adset_id, date,), fetchall=True)
 
+    def eee(self):
+        sql = "SELECT * FROM ad_metrics WHERE campaign_id=120215614681840753"
+        print(self.execute(sql, fetchone=True))
+
 
 db = Database()
+# db.eee()
 # db.create_table_status()
 # db.create_table()
 # db.create_ad_sets_table()

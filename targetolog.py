@@ -6,7 +6,7 @@ from aiogram.filters import Command
 import re
 from llm import gpt_v2
 from api_meta_ads import (save_as_mobile_html, get_active_campaigns,
-                          get_metrics_for_day, get_metrics_from_db, get_campaign_name)
+                          get_metrics_for_day, get_metrics_from_db)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import requests
 from database import *
@@ -40,14 +40,15 @@ prompt_for_auto_check = """Это автоматическое сообщени�
 
 Сделай анализ и верни свой фидбек, свои рекомендации. 
 Пока не вызывай никаких функций, просто верни свои рекомендации по изменениям.
-Только после моего одобрение можно будет вызвать функция по перераспределению бюджета или по отключению неэффективных групп объявлений.
+Только после моего одобрение можно будет вызвать функция по перераспределению бюджета или по 
+отключению неэффективных групп объявлений.
 Ниже я напишу метрики свои."""
 
 
 async def scheduled_analysis():
     chat_id = -1002162136800
     active_campaigns = get_active_campaigns()  # list()
-    get_metrics_for_day()  # получаю свежие метрики за 3 дня назад и вношу их в db
+    get_metrics_for_day()  # getting fresh auto metrics and inserting them into db
     request_text = ""
     for campaign in active_campaigns:
         request_text += f"### Campaign name = {campaign['name']}\n Campaign ID = {campaign['id']}\n\n"
@@ -70,6 +71,8 @@ async def scheduled_analysis():
 
 requests.get(f"https://api.telegram.org/bot{bot_token}/sendMessage?"
              f"chat_id=6287458105&text=123")
+
+asyncio.run(scheduled_analysis())
 
 
 @dp.message(Command("start"))

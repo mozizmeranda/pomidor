@@ -119,17 +119,16 @@ def get_interests(adset_id):
 # print(get_interests(120215617003820753))
 
 def get_status(adset_id):
-    url = "https://graph.facebook.com/v23.0/act_1011840574303712/adsets"
+    url = f"https://graph.facebook.com/v23.0/{adset_id}"
     filtering = [{"field": "adset.id", "operator": "EQUAL", "value": str(adset_id)}]
     params = {
         "fields": "id,name,status",
         "access_token": access_token,
-        "filtering": json.dumps(filtering)
     }
     resp = requests.get(url, params=params)
     data = resp.json()
-
-    return data['data'][0]['status']
+    print("adset_id: ", adset_id)
+    return data['status']
 
 
 def get_metrics_from_meta(date_since):
@@ -381,7 +380,7 @@ def get_metrics_for_day():
     }
     resp = requests.get(url, params=params)
     data = resp.json()
-
+    print(data)
     for row in data["data"]:
         if get_status(int(row["adset_id"])) == "ACTIVE":
             print(row["adset_id"])
