@@ -46,7 +46,7 @@ prompt_for_auto_check = """Это автоматическое сообщени�
 
 
 async def scheduled_analysis():
-    chat_id = -1002162136800
+    chat_id = 6287458105
     active_adsets = _active_adsets()  # list()
     get_metrics_for_day()  # getting fresh auto metrics and inserting them into db
     request_text = ""
