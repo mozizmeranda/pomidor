@@ -158,7 +158,7 @@ async def send_campaigns(message: types.Message):
 
 
 async def main():
-    scheduler.add_job(scheduled_analysis, 'cron', hour=hour, minute=minute)
+    scheduler.add_job(scheduled_analysis, 'cron', hour=16, minute=30)
 
     scheduler.start()
     await set_commands()
