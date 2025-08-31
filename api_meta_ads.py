@@ -1,5 +1,6 @@
 import json
 import markdown
+from amocrm_int import *
 from environs import Env
 from facebook_business.api import FacebookAdsApi
 from facebook_business.adobjects.adaccount import AdAccount
@@ -7,6 +8,7 @@ import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
 from database import db
+import json
 
 env = Env()
 env.read_env()
@@ -15,20 +17,10 @@ app_id = env.str("APP_ID")
 app_secret = env.str("APP_SECRET")
 access_token = env.str("ACCESS_TOKEN")
 ad_account_id = 'act_1011840574303712'  # Sherzod Djalilov
-# audience_id = 120230787401000283
-facebook_id = 735875899606197
-instagram_id = 17841442948535136
-#
-# campaign_id_v1 = 120230933381480283
-# campaign_id_v2 = 120230950013850283
-#
-# isso_id = 1011840574303712
-#
-# adset_id = 120230950033290283
 
 FacebookAdsApi.init(app_id, app_secret, access_token)
 
-FacebookAdsApi.init(app_id, app_secret, access_token)
+# FacebookAdsApi.init(app_id, app_secret, access_token)
 my_account = AdAccount(ad_account_id)
 
 
@@ -68,7 +60,7 @@ def llm_create_adset(name: str, campaign_id: int, audience_id: int):
 
             # Promoted object для messaging
             'promoted_object': {
-                'page_id': facebook_id
+                'page_id': None
             },
 
             # Таргетинг
@@ -129,64 +121,6 @@ def get_status(adset_id):
     data = resp.json()
     print("adset_id: ", adset_id)
     return data['status']
-
-
-def get_metrics_from_meta(date_since):
-    timestamp = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-
-    url = (
-        f"https://graph.facebook.com/v23.0/act_1011840574303712/insights"
-        f"?level=adset"
-        f"&fields=campaign_id,adset_id,campaign_name,adset_name,date_start,date_stop,"
-        f"spend,impressions,clicks,ctr,cpm,actions"
-        f"&access_token={access_token}&"
-        f"time_range[since]=2025-08-01&time_range[until]=2025-08-14&time_increment=1"
-        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"120222881867660753\"}}]&"
-    )
-    # print(date_since, timestamp)
-
-    response = requests.get(url)
-    data = response.json()
-
-    for row in data["data"]:
-        spend = float(row.get("spend", 0))
-        impressions = int(row.get("impressions", 0))
-        clicks = int(row.get("clicks", 0))
-
-        leads = 0
-        actions = row.get('actions', [])
-        for action in actions:
-            if action.get("action_type") == 'lead':
-                leads = action.get('value', 0)
-            # if action["action_type"] in ["lead", "onsite_conversion.lead_grouped"]:
-            #     leads += int(action.get("value", 0))
-
-        cr = round(int(leads) / clicks, 4) if clicks > 0 else 0
-        cpl = round(spend / int(leads), 4) if int(leads) > 0 else 0
-        ctr = round(clicks / impressions * 100, 4) if impressions > 0 else 0
-        cpm = round(spend / impressions * 1000, 4) if impressions > 0 else 0
-
-        timestamp = row['date_stop']
-        params = (
-            row["adset_id"],
-            row['adset_name'],
-            row["campaign_id"],
-            timestamp,
-            spend,
-            impressions,
-            clicks,
-            leads,
-            cr,
-            cpl,
-            ctr,
-            cpm
-        )
-        # print(params)
-        db.insert_ad_metrics(params=params)
-
-
-# print((get_metrics_from_meta("2025-08-01")))
-# print((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))
 
 
 def set_adset_status(adset_id, status):
@@ -457,3 +391,180 @@ def get_active_campaigns():
         active_campaigns.append({"id": campaign['id'], "name": campaign['name']})
 
     return active_campaigns
+
+
+def get_form_id_by_adset_id(adset_id):
+    ads_url = f"https://graph.facebook.com/v23.0/{adset_id}/ads"
+    ads_params = {
+        "access_token": access_token,
+        "fields": "id,name,creative"
+    }
+    ads_resp = requests.get(ads_url, params=ads_params)
+    ads_data = ads_resp.json()['data']
+    # print(ads_data)
+
+    creative_id = ads_data[0]['creative']['id']
+    if len(ads_data) > 1:
+        creative_id = ads_data[1]['creative']['id']
+
+    # print(creative_id)
+
+    creative_url = f"https://graph.facebook.com/v23.0/{creative_id}"
+    creative_params = {
+        "access_token": access_token,
+        "fields": "id,name,status,object_story_spec,call_to_action_type"
+        # "fields": "status,effective_status,object_story_spec{video_data{call_to_action{value}}}"
+    }
+    creative_resp = requests.get(creative_url, params=creative_params).json()
+    # print("resp_cre", creative_resp)
+    form_id = creative_resp['object_story_spec']['video_data']['call_to_action']['value']['lead_gen_form_id']
+
+    return form_id
+
+# print(get_form_id_by_adset_id(120215616952620753))
+
+
+def get_number_kval_leads(adset_id, target_date):
+
+    lst_ad_ids = set()
+
+    form_id = get_form_id_by_adset_id(adset_id)
+
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_of_next_day = start_of_day + timedelta(days=1)
+
+    start_ts = int(start_of_day.timestamp())
+    end_ts = int(start_of_next_day.timestamp()) - 1  # Исключаем следующий день
+
+    # print(f"Точные границы: {start_ts} ({start_of_day}) - {end_ts} ({datetime.fromtimestamp(end_ts)})")
+
+    filtering = [
+        {"field": "time_created", "operator": "GREATER_THAN_OR_EQUAL", "value": start_ts},
+        {"field": "time_created", "operator": "LESS_THAN", "value": end_ts}
+    ]
+
+    url = f'https://graph.facebook.com/v23.0/{form_id}/leads'
+    params = {
+        'access_token': access_token,
+        'fields': 'id,created_time,ad_id,form_id,field_data,adset_id',
+        'filtering': json.dumps(filtering)
+    }
+
+    response = requests.get(url, params=params)
+    data = response.json()
+    print('data', data)
+    # Дополнительная проверка на клиенте
+    filtered_leads = data['data']
+    # for lead in data.get('data', []):
+    #     created_time = lead.get('created_time')
+    #     if created_time:
+    #         lead_date = datetime.strptime(created_time, '%Y-%m-%dT%H:%M:%S%z')
+    #         if lead_date.date() == target_date.date():
+    #             filtered_leads.append(lead)
+
+    # print(f"API вернул: {len(data.get('data', []))} лидов")
+    # print(f"После фильтрации на клиенте: {len(filtered_leads)} лидов")
+    print("leads ", filtered_leads)
+    numbers = []
+    counter = 0
+    for lead in filtered_leads:
+        number = lead['field_data'][5]["values"][0]
+        numbers.append(number)
+        counter += checking_kval(number)
+        if checking_kval(number):
+            print(number)
+
+    print(f"lst: {len(numbers)}", numbers)
+    print(f"set: {len(set(numbers))}", set(numbers))
+
+    return counter
+
+
+target_date = datetime(2025, 8, 5)
+leads = get_number_kval_leads(120215614681850753, target_date)
+# print("leads", leads)
+
+# print(get_metrics_from_meta(120222881867660753))
+
+
+# def count_kval_leads(leads):
+#     counter = 0
+#     for lead in leads:
+#         number = lead['field_data'][5]["values"][0]
+#         counter += checking_kval(number)
+#         if checking_kval(number):
+#             print(number)
+#     return counter
+#
+#
+# print(count_kval_leads(leads))
+
+
+def get_metrics_from_meta(campaign_id):
+    timestamp = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    url = (
+        f"https://graph.facebook.com/v23.0/act_1011840574303712/insights"
+        f"?level=adset"
+        f"&fields=campaign_id,adset_id,campaign_name,adset_name,date_start,date_stop,"
+        f"spend,impressions,clicks,ctr,cpm,actions"
+        f"&access_token={access_token}&"
+        f"time_range[since]=2025-08-12&time_range[until]=2025-08-19&time_increment=1"
+        f"&filtering=[{{\"field\":\"campaign.id\",\"operator\":\"EQUAL\",\"value\":\"{campaign_id}\"}}]"
+    )
+    # print(date_since, timestamp)
+
+    response = requests.get(url)
+    data = response.json()
+    lst = []
+    for row in data["data"]:
+        spend = float(row.get("spend", 0))
+        impressions = int(row.get("impressions", 0))
+        clicks = int(row.get("clicks", 0))
+
+        leads = 0
+        actions = row.get('actions', [])
+        for action in actions:
+            if action.get("action_type") == 'lead':
+                leads = action.get('value', 0)
+            # if action["action_type"] in ["lead", "onsite_conversion.lead_grouped"]:
+            #     leads += int(action.get("value", 0))
+
+        cr = round(int(leads) / clicks, 4) if clicks > 0 else 0
+        cpl = round(spend / int(leads), 4) if int(leads) > 0 else 0
+        ctr = round(clicks / impressions * 100, 4) if impressions > 0 else 0
+        cpm = round(spend / impressions * 1000, 4) if impressions > 0 else 0
+
+        timestamp = row['date_stop'].split("-")
+        year = int(timestamp[0])
+        month = int(timestamp[1])
+        day = int(timestamp[2])
+
+        target_date = datetime(year, month, day)
+        kval_leads = get_number_kval_leads(row['adset_id'], target_date)
+        timestamp = row['date_stop']
+
+        # lst.append(row["adset_id"])
+
+        params = (
+            row["adset_id"],
+            row['adset_name'],
+            row["campaign_id"],
+            timestamp,
+            spend,
+            impressions,
+            clicks,
+            leads,
+            cr,
+            cpl,
+            ctr,
+            cpm,
+            kval_leads
+        )
+        # print(params)
+        db.insert_ad_metrics(params=params)
+    # print(set(lst))
+
+
+# print(get_metrics_from_meta(120215614681840753))
+# print((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"))

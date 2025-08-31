@@ -5,8 +5,8 @@ from config import bot_token, hour, minute
 from aiogram.filters import Command
 import re
 from llm import gpt_v2
-from api_meta_ads import (save_as_mobile_html, get_active_campaigns,
-                          get_metrics_for_day, get_metrics_from_db)
+from api_meta_ads import save_as_mobile_html
+from meta_api import _active_adsets, get_metrics_for_day, get_metrics_from_db
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import requests
 from database import *
@@ -42,19 +42,19 @@ prompt_for_auto_check = """Это автоматическое сообщени�
 Пока не вызывай никаких функций, просто верни свои рекомендации по изменениям.
 Только после моего одобрение можно будет вызвать функция по перераспределению бюджета или по 
 отключению неэффективных групп объявлений.
-Ниже я напишу метрики свои."""
+Ниже я напишу метрики по всем креативам."""
 
 
 async def scheduled_analysis():
     chat_id = -1002162136800
-    active_campaigns = get_active_campaigns()  # list()
+    active_adsets = _active_adsets()  # list()
     get_metrics_for_day()  # getting fresh auto metrics and inserting them into db
     request_text = ""
-    for campaign in active_campaigns:
-        request_text += f"### Campaign name = {campaign['name']}\n Campaign ID = {campaign['id']}\n\n"
-        request_text += get_metrics_from_db(campaign['id'])
+    for adset in active_adsets:
+        # request_text += f"### Campaign name = {adset['name']}\n Campaign ID = {adset['id']}\n\n"
+        request_text += get_metrics_from_db(adset['id'])
         request_text += "\n\n---\n\n\n"
-    print(request_text)
+    # print(request_text)
     full_text = prompt_for_auto_check + "\n\n" + request_text
     filename = save_as_mobile_html(full_text, 123)
     doc = FSInputFile(filename, "adset_report_123_mobile.html")

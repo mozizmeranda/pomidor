@@ -49,12 +49,32 @@ class Database:
         cr REAL,
         cpl REAL,
         ctr REAL,
-        cpm REAL);"""
+        cpm REAL,
+        kval_leads INTEGER);"""
         self.execute(sql, commit=True)
 
     def create_table_status(self):
         sql = ("CREATE TABLE IF NOT EXISTS status(campaign_id TEXT, campaign_name TEXT, adset_id TEXT, adset_name TEXT,"
                "status TEXT, date_stop TEXT)")
+        self.execute(sql, commit=True)
+
+    def create_new_table(self):
+        sql = """CREATE TABLE IF NOT EXISTS metrics(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                adset_id TEXT NOT NULL,
+                adset_name TEXT,
+                ad_name TEXT NOT NULL,
+                ad_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                spend REAL,
+                impressions INTEGER,
+                clicks INTEGER,
+                leads INTEGER,
+                cr REAL,
+                cpl REAL,
+                ctr REAL,
+                cpm REAL,
+                kval_leads INTEGER);"""
         self.execute(sql, commit=True)
 
     def insert_into(self, role: str, content: str):
@@ -90,7 +110,25 @@ class Database:
         cr,
         cpl,
         ctr,
-        cpm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        cpm, kval_leads) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        self.execute(sql, parameters=params, commit=True)
+
+
+    def insert_new_ad_metrics(self, params):
+        sql = """INSERT OR IGNORE INTO metrics(
+        adset_id,
+        adset_name,
+        ad_name,
+        ad_id,
+        timestamp,
+        spend,
+        impressions,
+        clicks,
+        leads,
+        cr,
+        cpl,
+        ctr,
+        cpm, kval_leads) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         self.execute(sql, parameters=params, commit=True)
 
     def get_metrics(self, campaign_id):
@@ -106,9 +144,9 @@ class Database:
         sql = "SELECT * FROM ad_metrics WHERE adset_id=? AND timestamp=?"
         return self.execute(sql, parameters=(adset_id, date,), fetchall=True)
 
-    def eee(self):
-        sql = "SELECT * FROM ad_metrics WHERE campaign_id=120215614681840753"
-        print(self.execute(sql, fetchone=True))
+    def get_metrics_by_adset_id(self, adset_id):
+        sql = "SELECT * FROM metrics WHERE adset_id=?"
+        return self.execute(sql, parameters=(adset_id,), fetchall=True)
 
 
 db = Database()
@@ -116,3 +154,4 @@ db = Database()
 # db.create_table_status()
 # db.create_table()
 # db.create_ad_sets_table()
+# db.create_new_table()
